@@ -70,5 +70,11 @@ class DipLot(Base):
     dippedAt: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     clothMeters: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     redoxMv: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+    # 登记人/登记时间：删除矩阵「自建」「当日」两个谓词的依据
+    created_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     vat: Mapped["Vat"] = relationship(back_populates="lots")
+    created_by: Mapped[Optional["User"]] = relationship()

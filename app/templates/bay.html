@@ -6,15 +6,36 @@
   x-init="init()"
 >
   <div class="chips" role="toolbar" aria-label="工坊筛选">
-    <button type="button" class="chip" :class="{ on: filterWs === null }" @click="setFilter(null)">全部缸位</button>
+    <button type="button" class="chip" :class="{ on: filterWs === null }" @click="setFilter(null)">
+      全部缸位 <span class="chip-count" x-text="'(' + vats.length + ')'"></span>
+    </button>
     <template x-for="w in workshops" :key="w.id">
-      <button
-        type="button"
-        class="chip"
-        :class="{ on: filterWs === w.id }"
-        @click="setFilter(w.id)"
-        x-text="w.name"
-      ></button>
+      <span class="chip" :class="{ on: filterWs === w.id }">
+        <button type="button" class="chip-main" @click="setFilter(w.id)">
+          <span x-text="w.name"></span>
+          <span class="chip-count" x-text="'(' + w.vatCount + ')'"></span>
+        </button>
+        <!-- 删坊按钮：主管对空坊可点，非空坊置灰并给同一份中文拒绝文案；
+             染缸工不藏按钮，给置灰按钮与同一份矩阵文案 -->
+        <span class="chip-del">
+          <template x-if="role === 'supervisor'">
+            <form method="post" :action="'/bay/workshops/' + w.id + '/delete'"
+                  x-show="canDelete('workshop', workshopFacts(w))"
+                  @submit="return confirmDelete('工坊', w.name)">
+              <input type="hidden" name="workshop" :value="filterWs || ''">
+              <button type="submit" class="del-x" title="删除该空工坊" aria-label="删除空工坊">删</button>
+            </form>
+          </template>
+          <button type="button" class="del-x dis" disabled
+                  x-show="role === 'supervisor' && !canDelete('workshop', workshopFacts(w))"
+                  :title="denyReason('workshop', workshopFacts(w))"
+                  :aria-label="denyReason('workshop', workshopFacts(w))">删</button>
+          <button type="button" class="del-x dis" disabled
+                  x-show="role === 'worker'"
+                  :title="denyReason('workshop', workshopFacts(w))"
+                  aria-label="工坊仅主管可删">删</button>
+        </span>
+      </span>
     </template>
   </div>
 
@@ -115,15 +136,51 @@
               <template x-for="l in selected().recentLots" :key="l.id">
                 <li>
                   <span x-text="l.dippedAt"></span>
-                  <span>
-                    <span x-text="l.clothMeters + ' m'"></span>
-                    ·
-                    <span x-text="l.redoxMv === null ? '无电位' : (l.redoxMv + ' mV')"></span>
+                  <span class="lot-right">
+                    <span>
+                      <span x-text="l.clothMeters + ' m'"></span>
+                      ·
+                      <span x-text="l.redoxMv === null ? '无电位' : (l.redoxMv + ' mV')"></span>
+                    </span>
+                    <!-- 删浸染笔：仅染缸工本人当日自建笔出现可点按钮；
+                         其余笔给置灰按钮并用同一份矩阵文案解释，不靠前端另写判断 -->
+                    <template x-if="role === 'worker'">
+                      <form method="post" :action="'/bay/lots/' + l.id + '/delete'"
+                            x-show="canDelete('lot', lotFacts(l))"
+                            @submit="return confirmDelete('浸染笔', l.dippedAt + ' 的一笔')">
+                        <input type="hidden" name="workshop" :value="filterWs || ''">
+                        <button type="submit" class="del-x" title="删除本笔当日自建记录" aria-label="删除浸染笔">删</button>
+                      </form>
+                      <button type="button" class="del-x dis" disabled
+                              x-show="!canDelete('lot', lotFacts(l))"
+                              :title="denyReason('lot', lotFacts(l))"
+                              :aria-label="denyReason('lot', lotFacts(l))">删</button>
+                    </template>
+                    <template x-if="role === 'supervisor'">
+                      <button type="button" class="del-x dis" disabled
+                              :title="denyReason('lot', lotFacts(l))" aria-label="主管不可删浸染笔">删</button>
+                    </template>
                   </span>
                 </li>
               </template>
               <li x-show="!selected().recentLots.length" style="border:0;color:#6b7c85">尚无记录</li>
             </ul>
+            <!-- 删染缸：主管对空缸可删；非空缸置灰，文案说明仍有浸染；染缸工只见置灰按钮 -->
+            <div class="vat-delete-row">
+              <form method="post" :action="'/bay/vats/' + selected().id + '/delete"
+                    x-show="role === 'supervisor' && canDelete('vat', vatFacts(selected()))"
+                    @submit="return confirmDelete('染缸', selected().code)">
+                <input type="hidden" name="workshop" :value="filterWs || ''">
+                <button type="submit" class="btn-danger">删除该空染缸</button>
+              </form>
+              <button type="button" class="btn-danger dis" disabled
+                      x-show="role === 'supervisor' && !canDelete('vat', vatFacts(selected()))"
+                      :title="denyReason('vat', vatFacts(selected()))"
+                      x-text="'删除染缸（' + selected().lotCount + ' 笔浸染）'"></button>
+              <button type="button" class="btn-danger dis" disabled
+                      x-show="role === 'worker'"
+                      :title="denyReason('vat', vatFacts(selected()))">染缸仅主管可删</button>
+            </div>
           </div>
         </div>
       </div>
@@ -138,8 +195,47 @@
     return {
       workshops: {{ workshops | tojson }},
       vats: {{ vats | tojson }},
+      // 与后端同一份删除矩阵与中文拒绝文案（后端 DELETE_MATRIX/DELETE_DENIALS 直接下发）
+      deleteMatrix: {{ delete_matrix | tojson }},
+      deleteDenials: {{ delete_denials | tojson }},
+      role: {{ current_role | tojson }},
+      currentUserId: {{ current_user_id }},
       filterWs: {{ filter_workshop if filter_workshop is not none else 'null' }},
       selectedId: {{ selected_vat if selected_vat is not none else 'null' }},
+      // —— 删除矩阵：三个入口共用这一个判定，不各写各的 ——
+      lotFacts(l) {
+        return { own: l.own === true, today: l.createdToday === true };
+      },
+      vatFacts(v) {
+        return { empty: (v.lotCount || 0) === 0 };
+      },
+      workshopFacts(w) {
+        return { empty: (w.vatCount || 0) === 0 };
+      },
+      _factsFor(target, facts) {
+        const rule = this.deleteMatrix[target][this.role];
+        if (rule === 'own_today') return facts.own && facts.today;
+        if (rule === 'empty_only') return facts.empty === true;
+        return false; // forbidden
+      },
+      canDelete(target, facts) {
+        return this._factsFor(target, facts) === true;
+      },
+      // 与后端 delete_rules.denial_reason 同构的中文原因，禁用按钮的 title 与后端 403 报同一文案
+      denyReason(target, facts) {
+        const rule = this.deleteMatrix[target][this.role];
+        const d = this.deleteDenials[target];
+        if (rule === 'forbidden') {
+          if (target === 'lot') return d.supervisor;
+          return d.worker;
+        }
+        if (rule === 'own_today') return facts.own ? d.not_today : d.not_owner;
+        if (rule === 'empty_only') return d.not_empty;
+        return '';
+      },
+      confirmDelete(kind, name) {
+        return window.confirm('确认删除' + kind + '「' + name + '」？此操作不可撤销。');
+      },
       init() {
         const params = new URLSearchParams(window.location.search);
         if (params.has('workshop') && this.filterWs === null) {

@@ -41,6 +41,16 @@ docker compose up --build -d
 
 **业务规则**：状态改为 `ready`（可染色）时，最新批次 `redoxMv` 须已填且 ≤ -500（见 `vat_rules.py`）。
 
+**删除权限矩阵**（唯一事实源在 `app/services/delete_rules.py`，后端鉴权与前端按钮显隐共用同一份 `DELETE_MATRIX` / `DELETE_DENIALS`）：
+
+| 删除对象 | 染缸工 | 主管 |
+|---|---|---|
+| 浸染笔 | 仅删**本人当日自建**笔（他人笔 / 隔日笔拒） | 不代删单笔 |
+| 染缸 | 无权 | 仅**空缸**（仍有浸染先拒，不级联吞笔） |
+| 工坊 | 无权 | 仅**空坊**（仍有染缸先拒） |
+
+三条删除入口（`/bay/lots/{id}/delete`、`/bay/vats/{id}/delete`、`/bay/workshops/{id}/delete`）走同一 helper 与同一矩阵；拒绝返回 403/404 中文说明并重渲染还原台，不清会话。删除在 `SELECT … FOR UPDATE` 行锁内执行，两主管并发删同一空坊时至多一笔成功。浸染笔以 `created_by_id` / `created_at` 判定「自建 / 当日」；老数据卷启动时自动 `ADD COLUMN IF NOT EXISTS` 并回填。
+
 ## 本地开发（可选）
 
 ```bash
