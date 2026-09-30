@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import inspect, text
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.db import Base, SessionLocal, engine
@@ -11,9 +12,24 @@ from app.routers import auth, pages
 from app.seed import ensure_seed_data
 
 
+def _ensure_schema() -> None:
+    """create_all 建新表；对已存在的旧库幂等补齐后续新增列。"""
+    Base.metadata.create_all(bind=engine)
+    inspector = inspect(engine)
+    lot_cols = {col["name"] for col in inspector.get_columns("dip_lots")}
+    if "created_by_id" not in lot_cols:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE dip_lots ADD COLUMN created_by_id INTEGER "
+                    "REFERENCES users(id) ON DELETE SET NULL"
+                )
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    _ensure_schema()
     db = SessionLocal()
     try:
         ensure_seed_data(db)

@@ -6,20 +6,36 @@
   x-init="init()"
 >
   <div class="chips" role="toolbar" aria-label="工坊筛选">
-    <button type="button" class="chip" :class="{ on: filterWs === null }" @click="setFilter(null)">全部缸位</button>
+    <button type="button" class="chip" :class="{ on: filterWs === null }" @click="setFilter(null)">
+      全部缸位 <span class="chip-count" x-text="vats.length"></span>
+    </button>
     <template x-for="w in workshops" :key="w.id">
-      <button
-        type="button"
-        class="chip"
-        :class="{ on: filterWs === w.id }"
-        @click="setFilter(w.id)"
-        x-text="w.name"
-      ></button>
+      <span class="chip-wrap">
+        <button
+          type="button"
+          class="chip"
+          :class="{ on: filterWs === w.id }"
+          @click="setFilter(w.id)"
+          x-text="w.name + '（' + countVats(w.id) + '缸）'"
+        ></button>
+        <!-- 删除工坊：三入口之一，显隐完全由同一张删除矩阵决定（主管 + 坊下无染缸） -->
+        <button
+          x-show="canDeleteWorkshop(w)"
+          type="button"
+          class="chip-del"
+          :aria-label="'删除空工坊 ' + w.name"
+          title="删除空工坊（无染缸）"
+          @click.stop="confirmDeleteWorkshop(w)"
+        >×</button>
+      </span>
     </template>
   </div>
 
-  {% if error %}
-  <div class="error-box">{{ error }}</div>
+  {% if flash_msg %}
+  <div class="flash-box ok">{{ flash_msg }}</div>
+  {% endif %}
+  {% if flash_err or error %}
+  <div class="error-box">{{ flash_err or error }}</div>
   {% endif %}
 
   <div class="bay-scroll" role="list">
@@ -75,6 +91,14 @@
           <span x-text="selected().code"></span>
           <span style="font-weight:500;font-size:0.9rem;color:#4a6670;margin-left:0.4rem"
                 x-text="selected().workshopName + ' · ' + selected().volumeL + ' L'"></span>
+          <!-- 删除染缸：三入口之一，显隐由矩阵决定（主管 + 缸下无浸染笔） -->
+          <button
+            type="button"
+            class="del-btn"
+            x-show="canDeleteVat(selected())"
+            style="float:right"
+            @click="confirmDeleteVat(selected())"
+          >删除空缸</button>
         </h2>
         <p class="hint">当前 <strong x-text="selected().statusLabel"></strong>
           · 最近浸染 <span x-text="selected().lastDippedAt || '—'"></span>
@@ -120,6 +144,18 @@
                     ·
                     <span x-text="l.redoxMv === null ? '无电位' : (l.redoxMv + ' mV')"></span>
                   </span>
+                  <!-- 删除浸染笔：三入口之一，显隐由矩阵决定（主管恒可；染缸工仅本人当日笔） -->
+                  <form
+                    method="post"
+                    class="lot-del-form"
+                    :action="'/bay/lots/' + l.id + '/delete'"
+                    x-show="canDeleteLot(l)"
+                    @submit="return confirmDeleteLot(l)"
+                  >
+                    <input type="hidden" name="workshop" :value="filterWs || ''">
+                    <input type="hidden" name="vat" :value="selected().id">
+                    <button type="submit" class="del-btn small" title="删除这笔浸染">删</button>
+                  </form>
                 </li>
               </template>
               <li x-show="!selected().recentLots.length" style="border:0;color:#6b7c85">尚无记录</li>
@@ -130,7 +166,13 @@
     </template>
   </div>
 
-  <p class="rule-foot">工坊只作缸位筛选片；浸染与状态均在缸位展开区内完成，无独立表页。</p>
+  <p class="rule-foot">工坊只作缸位筛选片；浸染与状态均在缸位展开区内完成，无独立表页。删除权限以同一张矩阵为准：染缸工仅可删本人当日浸染笔，染缸与工坊仅主管在清空后可删。</p>
+
+  <!-- 删除染缸 / 工坊表单：由对应确认函数提交，action 都打到共用删除入口 -->
+  <form id="vat-delete-form" method="post" hidden>
+    <input type="hidden" name="workshop" value="">
+  </form>
+  <form id="workshop-delete-form" method="post" hidden></form>
 </div>
 
 <script>
@@ -138,6 +180,9 @@
     return {
       workshops: {{ workshops | tojson }},
       vats: {{ vats | tojson }},
+      // 前后端共用的删除权限矩阵（含当前角色 role、规则 rules、中文标签 labels）
+      matrix: {{ delete_matrix | tojson }},
+      me: {{ me | tojson }},
       filterWs: {{ filter_workshop if filter_workshop is not none else 'null' }},
       selectedId: {{ selected_vat if selected_vat is not none else 'null' }},
       init() {
@@ -151,6 +196,56 @@
           if (!isNaN(v)) this.selectedId = v;
         }
       },
+      // —— 三个删除入口共用的矩阵读取：只解释这一份 rules，不在各处另写判断 ——
+      rule(kind) {
+        return (this.matrix.rules[kind] || {})[this.matrix.role] || 'deny';
+      },
+      isTodayIso(iso) {
+        if (!iso) return false;
+        const d = new Date(iso), n = new Date();
+        return d.getFullYear() === n.getFullYear()
+          && d.getMonth() === n.getMonth()
+          && d.getDate() === n.getDate();
+      },
+      canDeleteLot(l) {
+        const r = this.rule('dip_lot');
+        if (r === 'allow') return true;                       // 主管
+        if (r === 'own_today') {                              // 染缸工：本人 + 当日
+          return l.createdById === this.me.id && this.isTodayIso(l.dippedIso);
+        }
+        return false;
+      },
+      canDeleteVat(v) {
+        const r = this.rule('vat');
+        if (r === 'allow') return true;
+        return r === 'allow_empty' && v.lotCount === 0;       // 主管且缸已空
+      },
+      countVats(workshopId) {
+        return this.vats.filter(v => v.workshopId === workshopId).length;
+      },
+      canDeleteWorkshop(w) {
+        const r = this.rule('workshop');
+        if (r === 'allow') return true;
+        return r === 'allow_empty' && this.countVats(w.id) === 0; // 主管且坊已空
+      },
+      confirmDeleteLot(l) {
+        return window.confirm('确认删除这笔浸染记录？染缸工仅可删除本人当日登记的笔。');
+      },
+      confirmDeleteVat(v) {
+        if (window.confirm(`确认删除空染缸 ${v.code}？该缸下已无浸染笔。`)) {
+          const f = document.getElementById('vat-delete-form');
+          f.action = '/bay/vats/' + v.id + '/delete';
+          f.querySelector('input[name="workshop"]').value = (this.filterWs || '');
+          f.submit();
+        }
+      },
+      confirmDeleteWorkshop(w) {
+        if (window.confirm(`确认删除空工坊「${w.name}」？该工坊下已无染缸。`)) {
+          const f = document.getElementById('workshop-delete-form');
+          f.action = '/bay/workshops/' + w.id + '/delete';
+          f.submit();
+        }
+      },
       setFilter(id) {
         this.filterWs = id;
         const still = this.filteredVats().some(v => v.id === this.selectedId);
@@ -160,6 +255,8 @@
         else url.searchParams.set('workshop', id);
         if (this.selectedId) url.searchParams.set('vat', this.selectedId);
         else url.searchParams.delete('vat');
+        url.searchParams.delete('del_msg');
+        url.searchParams.delete('del_err');
         history.replaceState(null, '', url.pathname + url.search);
       },
       filteredVats() {

@@ -123,6 +123,57 @@
       border-color: rgba(216, 235, 232, 0.65);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
     }
+    .chip-count {
+      font-variant-numeric: tabular-nums;
+      opacity: 0.75;
+      font-size: 0.82em;
+      margin-left: 0.15rem;
+    }
+    .chip-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.15rem;
+    }
+    .chip-del {
+      appearance: none;
+      width: auto;
+      margin: 0;
+      padding: 0 0.42rem;
+      height: 1.55rem;
+      line-height: 1;
+      border-radius: 999px;
+      border: 1px solid rgba(240, 180, 180, 0.7);
+      background: rgba(139, 30, 30, 0.55);
+      color: #ffe8e8;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    .chip-del:hover { background: rgba(139, 30, 30, 0.85); }
+    .del-btn {
+      width: auto;
+      margin: 0;
+      padding: 0.28rem 0.7rem;
+      font-size: 0.8rem;
+      background: #8b1e1e;
+      border: 1px solid #b85555;
+      color: #fff;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .del-btn:hover { background: #6f1717; }
+    .del-btn.small { padding: 0.1rem 0.45rem; font-size: 0.74rem; border-radius: 6px; }
+    .lot-del-form { display: inline; margin: 0; }
+    .flash-box {
+      padding: 0.7rem 0.95rem;
+      border-radius: 10px;
+      margin-bottom: 1rem;
+      font-size: 0.92rem;
+    }
+    .flash-box.ok {
+      background: #e6f6ee;
+      color: #155c43;
+      border: 1px solid #9fd4c0;
+    }
     .bay-scroll {
       display: flex;
       gap: 0.75rem;

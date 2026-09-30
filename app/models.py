@@ -67,8 +67,12 @@ class DipLot(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     vat_id: Mapped[int] = mapped_column(ForeignKey("vats.id", ondelete="CASCADE"))
+    created_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     dippedAt: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     clothMeters: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     redoxMv: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
 
-    vat: Mapped["Vat"] = relationship(back_populates="lots")
+    vat: Mapped["Vat"] = relationship(back_populates="lots", foreign_keys=[vat_id])
+    created_by: Mapped[Optional["User"]] = relationship(foreign_keys=[created_by_id])
